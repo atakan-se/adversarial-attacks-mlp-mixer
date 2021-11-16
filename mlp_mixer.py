@@ -35,7 +35,7 @@ class Mixer(nn.Module):
 
 class MLPMixer(nn.Module):
     def __init__(self, input_dims, # (C,H,W)
-                       patch_size, # Int or Tuple 
+                       patch_size, # Int
                        num_classes, # Target classes
                        num_blocks, # Mixer blocks
                        hidden_dims, # How many channels each patch should be mapped at stem
@@ -58,7 +58,7 @@ class MLPMixer(nn.Module):
         y = torch.flatten(y, start_dim=2, end_dim=3) # y is now N C P
         y = torch.transpose(y, 1, 2) # y is now N P C
         for i, mixer_block in enumerate(self.mixers):
-            if self.training() and random.random() < self.stochastic_depth_p[i]: # Drop the block
+            if self.training and random.random() < self.stochastic_depth_p[i]: # Drop the block
                 pass # y = id(y)
             else:
                 y = mixer_block(y) 
