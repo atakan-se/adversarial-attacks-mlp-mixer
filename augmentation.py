@@ -1,5 +1,6 @@
 from PIL import Image, ImageOps, ImageEnhance
 import random
+import numpy as np
 
 # Image transformation functions. All of them expect a PIL image.
 def identity(img, _=0):
@@ -44,11 +45,11 @@ def color(img, val):
 def brightness(img, val):
     return ImageEnhance.Brightness(img).enhance(val)
 
+
 # Implementation of RandAug
 # Paper "RandAugment: Practical automated data augmentation with a reduced search space"
 # by Ekin D. Cubuk, Barret Zoph, Jonathon Shlens, Quoc V. Le , Google Research, Brain Team
 # at https://arxiv.org/abs/1909.13719
-
 class RandAug():
     def __init__(self, N, M):
         assert 0 <= M <= 30 # Range for Magnitude is taken from the paper
@@ -81,3 +82,18 @@ class RandAug():
                     val *= -1
             out = func(out, val) # Call the function with argument
         return out
+
+
+def apply_mixup(imgs, labels, alpha=0.2):
+    '''
+    Mixup method from "Mmixup: Beyond Empirical Risk Minimization"
+    by Hongyi Zhang, Moustapha Cisse, Yann N. Dauphin, David Lopez-Paz
+    at https://openreview.net/forum?id=r1Ddp1-Rb
+    '''
+    assert alpha>=0
+    lam = np.random.beta(alpha, alpha)
+    idx = torch.randperm(len(imgs))
+
+    mixed_imgs = lam * imgs + (1 - lam) * imgs[idx, :]
+
+    return mixed_imgs, labels, labels[idx], lam

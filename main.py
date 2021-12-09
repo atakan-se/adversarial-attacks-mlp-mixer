@@ -3,7 +3,7 @@ import torchvision
 import torch.nn as nn
 import random
 import numpy as np
-from augmentation import RandAug
+from augmentation import RandAug, apply_mixup
 from mlp_mixer import MLPMixer
 from utils import LinearDecay
 
@@ -14,7 +14,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 BATCH_SIZE = 128
 NUM_WORKERS = 2
-EPOCH = 300
+EPOCHS = 300
 VAL_INTERVAL = 10 # validate every n epochs
 RAND_AUG_N = 2
 RAND_AUG_M = 15
@@ -22,9 +22,12 @@ NUM_BLOCKS = 12
 HIDDEN_DIMS = 256
 LR = 0.001
 WD = 0
-TOKEN_DIMS = 64
-CHANNEL_DIMS = 512
+TOKEN_DIMS = HIDDEN_DIMS//2
+CHANNEL_DIMS = HIDDEN_DIMS*4
 STOCHASTIC_DEPTH = 0.1
+WARMUP_STEPS = 4000
+LINEAR_DECAY_STEPS = 250000
+MIXUP_ALPHA = 0.5
 
 train_transform = torchvision.transforms.Compose([       
             torchvision.transforms.RandomHorizontalFlip(),
@@ -44,39 +47,44 @@ test_loader = torch.utils.data.DataLoader(test_data, batch_size=BATCH_SIZE, shuf
 
 model = MLPMixer((3,32,32), 4, 100, NUM_BLOCKS, HIDDEN_DIMS, TOKEN_DIMS, CHANNEL_DIMS, STOCHASTIC_DEPTH).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=WD)
-linear_decay = LinearDecay(optimizer, LR, 0 , 120000) # Linear decay will be applied after warmup
-scheduler = LinearDecay(optimizer, 0, LR, 10000, linear_decay) # Scheduler will act as warmup first, then use linear decay
+linear_decay = LinearDecay(optimizer, LR, 0 , LINEAR_DECAY_STEPS) # Linear decay will be applied after warmup
+scheduler = LinearDecay(optimizer, 0, LR, WARMUP_STEPS, linear_decay) # Scheduler will act as warmup first, then use linear decay
 loss_func = nn.CrossEntropyLoss().to(device)
 
 best_accuracy = 0.0
-for epoch in range(EPOCH):
+for epoch in range(EPOCHS):
     model.train()
-    for data in train_loader:
-        inputs, labels = data
+    correct = 0
+    train_loss = 0.0
+    for imgs, labels in train_loader:
+        # Get/Augment inputs and forward
+        imgs, labels, mix_labels, lam = apply_mixup(imgs, labels, MIXUP_ALPHA)
+        outputs = model(imgs.to(device))
+        # Calculate training accuracy/loss
+        predictions = torch.max(outputs, dim=1)[1].cpu()
+        correct += lam * (predictions==labels).sum() + (1 - lam) * (predictions==mix_labels).sum()
+        loss = lam *loss_func(outputs, labels.to(device)) + (1-lam)* loss_func(outputs, mix_labels.to(device))
+        train_loss += loss.item()
+        # Backprop
         scheduler.zero_grad()
-
-        outputs = model(inputs.to(device))
-        loss = loss_func(outputs, labels.to(device))
         loss.backward()
         scheduler.step()
     
-    # Validation
+    print(f"Epoch:{epoch} Train loss:{train_loss:.2f} Train (mixup) acc.:{correct/len(train_data):.2f}")    # Validation
     if epoch%VAL_INTERVAL: continue
     model.eval()
     with torch.no_grad():
         correct = 0
-        for data in train_loader:
-            inputs, labels = data
-            outputs = model(inputs.to(device))
-            _, predictions = torch.max(outputs.cpu().data, dim=1)
+        for imgs, labels in train_loader:
+            outputs = model(imgs.to(device))
+            predictions = torch.max(outputs, dim=1)[1].cpu()
             correct += (predictions==labels).sum().item()
         print("Train acc.:", correct / len(train_data))
-    with torch.no_grad():
+        # Test accuracy:
         correct = 0
-        for data in test_loader:
-            inputs, labels = data
-            outputs = model(inputs.to(device))
-            _, predictions = torch.max(outputs.cpu().data, dim=1)
+        for imgs, labels in test_loader:
+            outputs = model(imgs.to(device))
+            predictions = torch.max(outputs, dim=1)[1].cpu()
             correct += (predictions==labels).sum().item()
         print("Validation acc.:", correct / len(test_data))
     

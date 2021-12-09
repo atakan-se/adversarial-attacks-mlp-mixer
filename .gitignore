@@ -2,3 +2,5 @@ datasets/tiny-imagenet-200
 tiny-imagenet-200.zip
 datasets/__pycache__
 *.pt
+__pycache__
+data
