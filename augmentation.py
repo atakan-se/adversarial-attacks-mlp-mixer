@@ -1,6 +1,8 @@
 from PIL import Image, ImageOps, ImageEnhance
 import random
 import numpy as np
+from torch.nn.functional import one_hot
+import torch 
 
 # Image transformation functions. All of them expect a PIL image.
 def identity(img, _=0):
@@ -84,16 +86,17 @@ class RandAug():
         return out
 
 
-def apply_mixup(imgs, labels, alpha=0.2):
+def apply_mixup(imgs, labels, alpha, num_classes):
     '''
     Mixup method from "Mmixup: Beyond Empirical Risk Minimization"
     by Hongyi Zhang, Moustapha Cisse, Yann N. Dauphin, David Lopez-Paz
     at https://openreview.net/forum?id=r1Ddp1-Rb
     '''
-    assert alpha>=0
+    assert alpha>0
     lam = np.random.beta(alpha, alpha)
     idx = torch.randperm(len(imgs))
 
     mixed_imgs = lam * imgs + (1 - lam) * imgs[idx, :]
-
-    return mixed_imgs, labels, labels[idx], lam
+    label_probs = lam * one_hot(labels, num_classes) + (1 - lam) * one_hot(labels[idx], num_classes)
+    
+    return mixed_imgs, label_probs

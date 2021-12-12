@@ -54,23 +54,21 @@ loss_func = nn.CrossEntropyLoss().to(device)
 best_accuracy = 0.0
 for epoch in range(EPOCHS):
     model.train()
-    correct = 0
     train_loss = 0.0
     for imgs, labels in train_loader:
         # Get/Augment inputs and forward
-        imgs, labels, mix_labels, lam = apply_mixup(imgs, labels, MIXUP_ALPHA)
+        if MIXUP_ALPHA > 0:
+            imgs, labels = apply_mixup(imgs, labels, MIXUP_ALPHA, OUT_CLASSES)
         outputs = model(imgs.to(device))
-        # Calculate training accuracy/loss
-        predictions = torch.max(outputs, dim=1)[1].cpu()
-        correct += lam * (predictions==labels).sum() + (1 - lam) * (predictions==mix_labels).sum()
-        loss = lam *loss_func(outputs, labels.to(device)) + (1-lam)* loss_func(outputs, mix_labels.to(device))
+        # Calculate training loss
+        loss = loss_func(outputs, labels.to(device))
         train_loss += loss.item()
         # Backprop
         scheduler.zero_grad()
         loss.backward()
         scheduler.step()
     
-    print(f"Epoch:{epoch} Train loss:{train_loss:.2f} Train (mixup) acc.:{correct/len(train_data):.2f}")    # Validation
+    print(f"Epoch:{epoch} Train loss:{train_loss:.2f}")    # Validation
     if epoch%VAL_INTERVAL: continue
     model.eval()
     with torch.no_grad():
