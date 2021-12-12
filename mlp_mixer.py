@@ -41,7 +41,8 @@ class MLPMixer(nn.Module):
                        hidden_dims, # How many channels each patch should be mapped at stem
                        token_mlp_dim, # Hidden dimensions for token MLP
                        channel_mlp_dim, # Hidden dimensions for channel MLP
-                       stochastic_depth_p = 0): # Probability for Stochastic Depth (https://arxiv.org/abs/1603.09382)
+                       stochastic_depth_p = 0, # Probability for Stochastic Depth (https://arxiv.org/abs/1603.09382)
+                       dropout_p = 0): # Probability for dropout before the final classifier layer
         super().__init__()
         C, H, W = input_dims
         assert (H*W) % (patch_size**2) == 0 # Make sure equal patch sizes are possible
@@ -51,18 +52,22 @@ class MLPMixer(nn.Module):
         self.layernorm = nn.LayerNorm(hidden_dims, eps=1e-6)
         self.classifier = nn.Linear(hidden_dims, num_classes)
         nn.init.zeros_(self.classifier.weight)
+        self.use_stochastic_depth = stochastic_depth_p > 0
         self.stochastic_depth_p = np.linspace(0, stochastic_depth_p, num_blocks) # Probability values (linearly increasing) for Stochastic Depth
-    
+        self.dropout = nn.Dropout(p=dropout_p)
     def forward(self, x):
         y = self.stem(x) # y is now N C H W
         y = torch.flatten(y, start_dim=2, end_dim=3) # y is now N C P
         y = torch.transpose(y, 1, 2) # y is now N P C
-        for i, mixer_block in enumerate(self.mixers):
-            if self.training and random.random() < self.stochastic_depth_p[i]: # Drop the block
-                pass # y = id(y)
-            else:
-                y = mixer_block(y) 
+        if self.training and self.use_stochastic_depth:
+            for i, mixer_block in enumerate(self.mixers):
+                if random.random() < self.stochastic_depth_p[i]: # Drop the block
+                    pass # y = id(y)
+                else:
+                    y = mixer_block(y) 
+        else: y = self.mixers(y)
         y = self.layernorm(y)
         y = torch.mean(y, dim=1, keepdim=False)
+        y = self.dropout(y)
         y = self.classifier(y)
         return y
