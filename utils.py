@@ -13,17 +13,11 @@ class LinearDecay():
         if self.n_steps==self.steps: # Done with the warmup
             if self.next_scheduler:
                 self.next_scheduler.step()
-            else:
-                self._optimizer.step()
         else:
             self._update_lr()
-            self._optimizer.step()
 
     def _update_lr(self):
         self.lr += self.rate
         self.steps += 1
         for param_group in self._optimizer.param_groups:
             param_group['lr'] = self.lr
-    
-    def zero_grad(self):
-        self._optimizer.zero_grad()
