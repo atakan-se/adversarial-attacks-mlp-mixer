@@ -100,3 +100,26 @@ def apply_mixup(imgs, labels, alpha, num_classes):
     label_probs = lam * one_hot(labels, num_classes) + (1 - lam) * one_hot(labels[idx], num_classes)
     
     return mixed_imgs, label_probs
+
+class Cutout():
+    def __init__(self, mask_size):
+        if isinstance(mask_size, int):
+            self.mask_size = (mask_size, mask_size)
+        else:
+            self.mask_size = mask_size
+    
+    def __call__(self, img):
+        img = np.asarray(img).copy()
+        W, H = img.shape[:2]
+        x = np.random.randint(0, W+1)
+        y = np.random.randint(0, H+1)
+        y_left = y - self.mask_size[0]//2
+        y_left = 0 if y_left<0 else y_left
+        y_right = y + self.mask_size[0]//2
+        y_right = H if y_right > H else y_right
+        x_left = x - self.mask_size[1]//2
+        x_left = 0 if x_left<0 else x_left
+        x_right = x + self.mask_size[1]//2
+        x_right = H if x_right > W else x_right
+        img[y_left:y_right, x_left:x_right] = (0,0,0)
+        return Image.fromarray(img)
