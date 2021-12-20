@@ -110,16 +110,12 @@ class Cutout():
     
     def __call__(self, img):
         img = np.asarray(img).copy()
-        W, H = img.shape[:2]
+        H, W = img.shape[:2]
         x = np.random.randint(0, W+1)
         y = np.random.randint(0, H+1)
-        y_left = y - self.mask_size[0]//2
-        y_left = 0 if y_left<0 else y_left
-        y_right = y + self.mask_size[0]//2
-        y_right = H if y_right > H else y_right
-        x_left = x - self.mask_size[1]//2
-        x_left = 0 if x_left<0 else x_left
-        x_right = x + self.mask_size[1]//2
-        x_right = H if x_right > W else x_right
+        y_left = max(0, y - self.mask_size[0]//2)
+        y_right = min(H, y + self.mask_size[0]//2)
+        x_left = max(0, x - self.mask_size[1]//2)
+        x_right = min(W, x + self.mask_size[1]//2)
         img[y_left:y_right, x_left:x_right] = (0,0,0)
         return Image.fromarray(img)
