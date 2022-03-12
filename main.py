@@ -30,9 +30,11 @@ DROPOUT = 0
 WARMUP_EPOCHS = 5
 SCHEDULER_EPOCHS = EPOCHS - WARMUP_EPOCHS
 MIXUP_ALPHA = 0.5
+LEGACY = False
 
 train_transform = torchvision.transforms.Compose([       
             torchvision.transforms.RandomHorizontalFlip(),
+            torchvision.transforms.RandomCrop(size=(32,32), padding=4),
             #torchvision.transforms.RandomResizedCrop(size=(64,64)),
             RandAug(RAND_AUG_N, RAND_AUG_M),
             torchvision.transforms.ToTensor(),
@@ -56,7 +58,7 @@ WARMUP_STEPS = WARMUP_EPOCHS * len(train_data)// BATCH_SIZE
 
 model = MLPMixer(IMG_DIMS, PATCH_SIZE, OUT_CLASSES, NUM_BLOCKS, HIDDEN_DIMS, TOKEN_DIMS, CHANNEL_DIMS, STOCHASTIC_DEPTH, DROPOUT).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=WD)
-scheduler_after_warmup = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, SCHEDULER_STEPS)
+scheduler_after_warmup = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, SCHEDULER_STEPS, eta_min=1e-6)
 scheduler = LinearDecay(optimizer, 0, LR, WARMUP_STEPS, scheduler_after_warmup) # Scheduler will act as warmup first, then use linear decay
 scheduler.step() # start warmup
 loss_func = nn.CrossEntropyLoss().to(device)
@@ -72,10 +74,16 @@ for epoch in range(EPOCHS):
     for imgs, labels in train_loader:
         # Get/Augment inputs and forward
         if MIXUP_ALPHA > 0:
-            imgs, labels = apply_mixup(imgs, labels, MIXUP_ALPHA, OUT_CLASSES)
+            if LEGACY:
+                imgs, labels, mix_labels, lam = apply_mixup(imgs, labels, MIXUP_ALPHA, legacy=True)
+            else:
+                imgs, labels = apply_mixup(imgs, labels, MIXUP_ALPHA, num_classes=OUT_CLASSES)
         outputs = model(imgs.to(device))
         # Calculate training loss
-        loss = loss_func(outputs, labels.to(device))
+        if MIXUP_ALPHA > 0 and LEGACY:
+            loss = lam * loss_func(outputs, labels.to(device)) + (1-lam)* loss_func(outputs, mix_labels.to(device))
+        else:
+            loss = loss_func(outputs, labels.to(device))
         train_loss += loss.item()
         # Backprop
         optimizer.zero_grad()

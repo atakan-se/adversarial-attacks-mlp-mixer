@@ -86,19 +86,25 @@ class RandAug():
         return out
 
 
-def apply_mixup(imgs, labels, alpha, num_classes):
+def apply_mixup(imgs, labels, alpha, num_classes=None, legacy=False):
     '''
-    Mixup method from "Mmixup: Beyond Empirical Risk Minimization"
+    Mixup method from "Mixup: Beyond Empirical Risk Minimization"
     by Hongyi Zhang, Moustapha Cisse, Yann N. Dauphin, David Lopez-Paz
     at https://openreview.net/forum?id=r1Ddp1-Rb
+
+    If legacy==True, instead of label probabilities, labels, lambda value and mixed labels will be returned
+    This is because with old versions of PyTorch, CrossEntropy only works with index values and not probabilities
     '''
     assert alpha>0
+    assert (num_classes is not None) or legacy==True # num_classes not required for legacy
     lam = np.random.beta(alpha, alpha)
     idx = torch.randperm(len(imgs))
 
     mixed_imgs = lam * imgs + (1 - lam) * imgs[idx, :]
+    if legacy:
+        return mixed_imgs, labels, labels[idx], lam
+        
     label_probs = lam * one_hot(labels, num_classes) + (1 - lam) * one_hot(labels[idx], num_classes)
-    
     return mixed_imgs, label_probs
 
 class Cutout():
