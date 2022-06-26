@@ -21,3 +21,14 @@ class LinearDecay():
         self.steps += 1
         for param_group in self._optimizer.param_groups:
             param_group['lr'] = self.lr
+
+def patchify(I, patch_size, stride=[1,1]):
+    """ 
+    Takes Image I with (*, H, W); splits into patches and returns (*, PY, PX, PH, PW) 
+    E.g.:  (3,32,32) image is split into patches of size 4 with stride 4: (3, 8, 8, 4, 4)
+    """
+    H,W = I.shape[-2:]
+    ph,pw = (patch_size, patch_size) if isinstance(patch_size, int) else patch_size
+    sh,sw = (stride, stride) if isinstance(stride, int) else stride
+    assert not (((H - ph) % sh) or ((W - pw) % sw))
+    return I.unfold(-2, ph, sh).unfold(-2, pw, sw)
