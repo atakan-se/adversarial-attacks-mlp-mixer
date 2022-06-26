@@ -6,6 +6,7 @@ import numpy as np
 from augmentation import RandAug, apply_mixup
 from mlp_mixer import MLPMixer
 from utils import LinearDecay
+from adversarial_training import fgsm_training
 
 random.seed(2112)
 np.random.seed(2112)
@@ -31,6 +32,8 @@ WARMUP_EPOCHS = 5
 SCHEDULER_EPOCHS = EPOCHS - WARMUP_EPOCHS
 MIXUP_ALPHA = 0.5
 LEGACY = False
+ADVERSARIAL_TRAINING = False
+MODEL_NAME = "model" # Used for saving weights
 
 train_transform = torchvision.transforms.Compose([       
             torchvision.transforms.RandomHorizontalFlip(),
@@ -78,18 +81,22 @@ for epoch in range(EPOCHS):
                 imgs, labels, mix_labels, lam = apply_mixup(imgs, labels, MIXUP_ALPHA, legacy=True)
             else:
                 imgs, labels = apply_mixup(imgs, labels, MIXUP_ALPHA, num_classes=OUT_CLASSES)
-        outputs = model(imgs.to(device))
-        # Calculate training loss
-        if MIXUP_ALPHA > 0 and LEGACY:
-            loss = lam * loss_func(outputs, labels.to(device)) + (1-lam)* loss_func(outputs, mix_labels.to(device))
+        
+        if ADVERSARIAL_TRAINING:
+            train_loss = fgsm_training(model, loss_func, optimizer, imgs, labels, 10/255, 8/255, scheduler=scheduler, device=device)
         else:
-            loss = loss_func(outputs, labels.to(device))
-        train_loss += loss.item()
-        # Backprop
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        scheduler.step()
+            outputs = model(imgs.to(device))
+            # Calculate training loss
+            if MIXUP_ALPHA > 0 and LEGACY:
+                loss = lam * loss_func(outputs, labels.to(device)) + (1-lam)* loss_func(outputs, mix_labels.to(device))
+            else:
+                loss = loss_func(outputs, labels.to(device))
+            train_loss += loss.item()
+            # Backprop
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
     
     print(f"Epoch:{epoch} Train loss:{train_loss:.2f}")    # Validation
     if epoch%VAL_INTERVAL: continue
@@ -117,4 +124,4 @@ for epoch in range(EPOCHS):
                     'val_acc': best_accuracy,
                     'loss': train_loss,
                     'model_params': (IMG_DIMS, PATCH_SIZE, OUT_CLASSES, NUM_BLOCKS, HIDDEN_DIMS, TOKEN_DIMS, CHANNEL_DIMS, STOCHASTIC_DEPTH, DROPOUT)}, 
-                    'model_checkpoint.pt')
+                    f'{MODEL_NAME}_checkpoint.pt')
